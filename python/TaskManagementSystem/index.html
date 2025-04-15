@@ -1,0 +1,601 @@
+<!DOCTYPE html>
+<html lang="zh">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>任务管理系统</title>
+  <!-- 引入 marked.js -->
+  <script src="js/marked.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/highlight.min.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/styles/github-dark.min.css">
+  <style>
+    body {
+      background-color: #0d1117;
+      color: #ffffff;
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 0;
+    }
+
+    .container > div {
+      max-width: 800px;
+      margin: 20px auto;
+      padding: 20px;
+      border: 1px solid #333;
+      border-radius: 8px;
+    }
+
+    div[data-task-item] {
+      margin-bottom: 10px;
+      border-bottom: 1px solid #c5c5c5;
+    }
+
+    input[type="checkbox"][checked]+* {
+      text-decoration: line-through;
+      color: #666;
+    }
+
+    .modal {
+      display: none;
+      width: 700px;
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background-color: #222;
+      padding: 20px;
+      border-radius: 8px;
+      z-index: 1000;
+    }
+
+    .overlay {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(0, 0, 0, 0.5);
+      z-index: 100;
+    }
+
+    textarea {
+      background-color: #474747;
+      color: #ffffff;
+      border: none;
+      width: 100%;
+      height: 200px;
+      border-radius: 10px;
+      margin-top: 20px;
+    }
+
+    button[data-add-task] {
+      width: 50px;
+      height: 50px;
+      border-radius: 100%;
+      position: fixed;
+      bottom: 50px;
+      right: 50px;
+      background-color: #3f83db;
+      color: #ffffff;
+      font-size: 24px;
+      border: none;
+      cursor: pointer;
+    }
+
+    input[type="checkbox"] {
+      margin-right: 10px;
+    }
+
+    img {
+      max-width: 100%;
+    }
+
+    input[type="file"] {
+      display: none;
+    }
+
+    /* 插入代码对话框样式 */
+    .code-modal {
+      display: none;
+      width: 400px;
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background-color: #222;
+      padding: 20px;
+      border-radius: 8px;
+      z-index: 1001;
+    }
+
+    .code-modal input,
+    .code-modal textarea {
+      width: 100%;
+      margin-bottom: 10px;
+      padding: 5px;
+      background-color: #474747;
+      color: #ffffff;
+      border: none;
+    }
+
+    .code-modal button {
+      width: 100%;
+      padding: 10px;
+      background-color: #3f83db;
+      color: #ffffff;
+      border: none;
+      cursor: pointer;
+    }
+
+    /* 代码块样式 */
+    .hljs {
+      background-color: #151b23;
+      color: #ffffff;
+    }
+
+    .code-block {
+      background-color: #282c34;
+      color: #abb2bf;
+      padding: 10px;
+      border-radius: 5px;
+      margin: 10px 0;
+      overflow-x: auto;
+      position: relative;
+    }
+
+    .code-block pre {
+      margin: 0;
+    }
+
+    /* 复制按钮样式 */
+    .copy-btn {
+      position: absolute;
+      top: 5px;
+      right: 5px;
+      background-color: #3f83db;
+      color: #ffffff;
+      border: none;
+      padding: 5px 10px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12px;
+    }
+
+    .copy-btn:hover {
+      background-color: #2c5a9e;
+    }
+
+    /* 美化标题样式 */
+    h1 {
+      display: block;
+      width: 800px;
+      margin: 0 auto;
+      text-align: center;
+      color: #ffffff;
+      font-size: 36px;
+      font-weight: bold;
+      padding: 20px 0;
+      border-bottom: 2px solid #3f83db;
+    }
+
+    /* 美化按钮样式 */
+    button {
+      transition: all 0.3s ease;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+
+    button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 8px rgba(0, 0, 0, 0.2);
+    }
+
+    /* 美化模态框样式 */
+    .modal,
+    .code-modal {
+      background-color: #1a1a1a;
+      border: 1px solid #3f83db;
+      box-shadow: 0 8px 16px rgba(0, 0, 0, 0.3);
+    }
+
+    /* 美化代码块样式 */
+    .code-block {
+      background-color: #282c34;
+      color: #abb2bf;
+      padding: 15px;
+      border: 1px solid #3f83db;
+      border-radius: 8px;
+      margin: 15px 0;
+      overflow-x: auto;
+      position: relative;
+    }
+
+    .code-block pre {
+      margin: 0;
+      font-size: 14px;
+    }
+
+    /* 美化复制按钮样式 */
+    .copy-btn {
+      background-color: #3f83db;
+      color: #ffffff;
+      border: none;
+      padding: 5px 10px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12px;
+      transition: all 0.3s ease;
+    }
+
+    .copy-btn:hover {
+      background-color: #2c5a9e;
+      transform: scale(1.05);
+    }
+  </style>
+</head>
+
+<body>
+  <h1>任务管理系统</h1>
+  <div class="container"></div>
+
+  <!-- Modal -->
+  <div class="modal">
+    <h2>添加任务</h2>
+    <select id="taskFrequency">
+      <option value="">不重复</option>
+      <option value="daily">每天</option>
+      <option value="weekly">每周</option>
+      <option value="monthly">每月</option>
+    </select>
+    <input type="file" accept="image/*">
+    <input type="button" value="插入图片">
+    <input type="button" value="插入代码" id="insertCodeBtn">
+    <textarea placeholder="任务内容"></textarea>
+    <div id="imagePreview" style="margin-top: 10px;"></div>
+    <button id="saveTaskBtn">保存</button>
+  </div>
+  <button data-add-task>+</button>
+
+  <!-- 添加 overlay 元素 -->
+  <div class="overlay"></div>
+
+  <div class="code-modal">
+    <h3>插入代码</h3>
+    <input type="text" id="codeLanguage" placeholder="代码语言（如 JavaScript）">
+    <textarea id="codeContent" placeholder="请输入代码内容"></textarea>
+    <button id="insertCode">插入</button>
+  </div>
+  <script>
+    const taskList = document.querySelector(".container");
+    const addTaskBtn = document.querySelector("[data-add-task]");
+    const taskModal = document.querySelector(".modal");
+    const overlay = document.querySelector(".overlay");
+    const codeModal = document.querySelector(".code-modal");
+
+    marked.setOptions({
+      highlight: function (code, lang) {
+
+        const validLang = hljs.getLanguage(lang) ? lang : 'javascript';
+        try {
+          return hljs.highlight(code, { language: validLang }).value;
+        }
+        catch (e) {
+          return hljs.highlightAuto(code).value;
+        }
+      },
+      langPrefix: 'hljs language-' // 确保类名与GitHub样式兼容
+    });
+
+    async function fetchTasks() {
+      const res = await fetch("/tasks");
+      const data = await res.json();
+      if (data.success) {
+        taskList.innerHTML = "";
+        const tasksByDate = {};
+
+        // 按日期分组任务
+        data.data.forEach(task => {
+          if (!tasksByDate[task.time]) {
+            tasksByDate[task.time] = [];
+          }
+          tasksByDate[task.time].push(task);
+        });
+
+        // 遍历分组后的任务并创建相应的 div
+        for (const date in tasksByDate) {
+          const dateDiv = document.createElement("div");
+          dateDiv.innerHTML = `<h2>${date}</h2>`;
+          taskList.appendChild(dateDiv);
+
+          tasksByDate[date].forEach(task => {
+            const div = document.createElement("div");
+            div.setAttribute('data-task-item', '');
+            if (task.completed)
+              div.style.opacity = '0.5';
+            div.innerHTML = `
+          ${marked.parse(task.content)}
+          <button data-edit-task data-task-id="${task.id}">编辑</button>
+          <button data-delete-task data-task-id="${task.id}">删除</button>
+        `;
+
+            // 创建复选框元素
+            const checkbox = document.createElement("input");
+            checkbox.type = "checkbox";
+            checkbox.dataset.taskId = task.id;
+            if (task.completed) {
+              checkbox.checked = true;
+            }
+
+            // 检查是否有 p 标签
+            const p = div.querySelector("p");
+            if (p) {
+              // 如果有 p 标签，将复选框插入到 p 标签之前
+              p.insertBefore(checkbox, p.firstChild);
+            } 
+            else {
+              // 如果没有 p 标签，将复选框插入到 div 的开头
+              div.insertBefore(checkbox, div.firstChild);
+            }
+
+            dateDiv.appendChild(div);
+            renderCodeBlocks(div);  // 渲染代码块
+          });
+        }
+
+        // 为每个多选框添加事件监听
+        document.querySelectorAll('[data-task-item] input[type="checkbox"]').forEach(checkbox => {
+          checkbox.addEventListener("change", async (event) => {
+            const taskId = event.target.dataset.taskId;
+            await completeTask(taskId);
+          });
+        });
+
+        // 为删除按钮添加事件监听
+        document.querySelectorAll('[data-delete-task]').forEach(button => {
+          button.addEventListener("click", async (event) => {
+            const taskId = event.target.dataset.taskId;
+            await deleteTask(taskId);
+          });
+        });
+
+        // 为编辑按钮添加事件监听
+        document.querySelectorAll('[data-edit-task]').forEach(button => {
+          button.addEventListener("click", async (event) => {
+            const taskId = event.target.dataset.taskId;
+            await editTask(taskId);
+          });
+        });
+      }
+    }
+
+    // 删除任务功能
+    async function deleteTask(taskId) {
+      if (confirm("确定要删除该任务吗？")) {
+        const response = await fetch(`/task/${taskId}`, {
+          method: "DELETE"
+        });
+        const data = await response.json();
+        if (data.success) {
+          alert("任务已删除");
+          fetchTasks();
+        }
+        else {
+          alert("删除失败：" + data.message);
+        }
+      }
+    }
+
+    // 编辑任务功能
+    async function editTask(taskId) {
+      document.querySelector(".modal h2").textContent = "编辑任务";
+      const response = await fetch(`/task/${taskId}`);
+      const data = await response.json();
+      if (data.success) {
+        taskModal.style.display = "block";
+        overlay.style.display = "block";
+        document.querySelector("textarea").value = data.data.content;
+        document.getElementById("taskFrequency").value = data.data.frequency || "";
+        document.getElementById("imagePreview").innerHTML = "";
+        document.querySelector("#saveTaskBtn").dataset.taskId = taskId;
+        renderCodeBlocks(taskModal);  // 渲染代码块
+      }
+      else {
+        alert("获取任务失败：" + data.message);
+      }
+    }
+
+    // 显示模态框
+    addTaskBtn.addEventListener("click", () => {
+      document.querySelector(".modal h2").textContent = "添加任务";
+      taskModal.style.display = "block";
+      overlay.style.display = "block";
+      document.querySelector("textarea").value = "";
+      document.getElementById("taskFrequency").value = "";
+      document.querySelector("input[type='file']").value = "";
+      document.getElementById("imagePreview").innerHTML = "";
+    });
+
+    // 蒙版点击关闭模态框
+    document.querySelector(".overlay").addEventListener("click", () => {
+      if (codeModal.style.display === "block") {
+        codeModal.style.display = "none";
+        document.getElementById("codeContent").value = "";
+        document.getElementById("codeLanguage").value = "";
+        document.getElementById("imagePreview").innerHTML = "";
+      }
+      else {
+        taskModal.style.display = "none";
+        overlay.style.display = "none";
+        document.querySelector("textarea").value = "";
+        document.getElementById("taskFrequency").value = "";
+        document.querySelector("input[type='file']").value = "";
+      }
+    });
+
+    // 为"插入图片"按钮添加点击事件监听
+    document.querySelector("input[value='插入图片']").addEventListener("click", () => {
+      document.querySelector("input[type='file']").click();
+    });
+
+    // 监听文件输入框的change事件
+    document.querySelector("input[type='file']").addEventListener("change", async (event) => {
+      const file = event.target.files[0];
+
+      if (!file) {
+        alert("请选择图片文件");
+        document.getElementById("imagePreview").innerHTML = "";
+        return;
+      }
+
+      try {
+        const formData = new FormData();
+        formData.append("image", file);
+
+        const response = await fetch("/image", {
+          method: "POST",
+          body: formData
+        });
+
+        const data = await response.json();
+        console.log(data);
+        if (data.success) {
+          document.getElementById("imagePreview").innerHTML = `<img src="image/${data.data.filename}" style="max-width: 100px;">`;
+
+          const markdownImage = `![图片描述](image/${data.data.filename})`;
+          const taskContent = document.querySelector("textarea");
+          taskContent.value += markdownImage + "\n";
+        }
+        else {
+          alert("图片上传失败");
+          console.error("图片上传失败", data.message);
+        }
+      }
+      catch (error) {
+        console.error("图片上传失败", error);
+        alert("图片上传失败");
+      }
+    });
+
+    // 修复保存任务时
+    document.getElementById("saveTaskBtn").addEventListener("click", async () => {
+      const content = document.querySelector("textarea").value;
+      const frequency = document.getElementById("taskFrequency").value;
+      const taskId = document.querySelector("#saveTaskBtn").dataset.taskId;
+
+      if (taskId) {
+        await fetch(`/task/${taskId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            id: parseInt(taskId),
+            content,
+            frequency
+          })
+        });
+      }
+      else {
+        await fetch("/task", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            content,
+            frequency
+          })
+        });
+      }
+
+      taskModal.style.display = "none";
+      overlay.style.display = "none";
+      fetchTasks();
+    });
+
+    // 更新 completeTask 函数以支持取消完成逻辑
+    async function completeTask(taskId) {
+      const checkbox = document.querySelector(`input[data-task-id="${taskId}"]`);
+      const completed = checkbox.checked;
+      await fetch(`/task/complete/${taskId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          completed
+        })
+      });
+      fetchTasks();
+    }
+
+    // 修复获取任务详情的函数
+    async function fetchTaskDetails(taskId) {
+      try {
+        const response = await fetch(`/task/${taskId}`);
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        const data = await response.json();
+        if (data.success) {
+          return data.data;
+        }
+        else {
+          throw new Error(data.message);
+        }
+      }
+      catch (error) {
+        console.error("获取任务详情失败", error);
+        throw error;
+      }
+    }
+
+    fetchTasks();
+
+    // 插入代码功能
+    document.getElementById("insertCodeBtn").addEventListener("click", () => {
+      codeModal.style.display = "block";
+    });
+
+    document.getElementById("insertCode").addEventListener("click", () => {
+      const language = document.getElementById("codeLanguage").value;
+      const content = document.getElementById("codeContent").value;
+      insertCode(language, content);
+      codeModal.style.display = "none";
+    });
+
+    // 插入代码函数
+    function insertCode(language, content) {
+      const taskContent = document.querySelector("textarea");
+      const codeBlock = `\n\`\`\`${language}\n${content.trim()}\n\`\`\`\n`;
+      taskContent.value += codeBlock;
+      renderCodeBlocks(taskModal);  // 渲染代码块
+    }
+
+    // 渲染代码块的函数
+    function renderCodeBlocks(container) {
+      const codeBlocks = container.querySelectorAll('pre code');
+      codeBlocks.forEach(block => {
+        const language = block.classList[0] || 'plaintext';
+        block.parentNode.className = `language-${language}`;
+        hljs.highlightBlock(block);
+
+        // 添加复制按钮
+        const copyBtn = document.createElement('button');
+        copyBtn.className = 'copy-btn';
+        copyBtn.textContent = '复制';
+        copyBtn.addEventListener('click', () => {
+          navigator.clipboard.writeText(block.textContent).then(() => {
+            copyBtn.textContent = '已复制';
+            setTimeout(() => {
+              copyBtn.textContent = '复制';
+            }, 2000);
+          }).catch(err => {
+            console.error('复制失败:', err);
+          });
+        });
+
+        block.parentNode.style.position = 'relative';
+        block.parentNode.appendChild(copyBtn);
+      });
+    }
+
+  </script>
+</body>
+
+</html>

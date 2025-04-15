@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>路由器管理</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #f4f4f9;
+      margin: 0;
+      padding: 0;
+    }
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    header {
+      color: white;
+			background-color: #a9e7ff;
+      padding: 20px;
+      text-align: center;
+      border-radius: 5px;
+    }
+    .content {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 20px;
+    }
+    .device-list {
+      width: 65%;
+      background-color: white;
+      padding: 20px;
+      border-radius: 5px;
+      box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+    }
+    .device-item {
+      border-bottom: 1px solid #e0e0e0;
+      padding: 10px 0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .device-item:last-child {
+      border-bottom: none;
+    }
+    .device-info {
+      display: flex;
+      flex-direction: column;
+    }
+    .device-ip {
+      color: #7f8c8d;
+      font-size: 0.9em;
+    }
+    .switch-container {
+      width: 30%;
+      background-color: white;
+      padding: 20px;
+      border-radius: 5px;
+      box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+    }
+    .switch-label {
+      font-weight: bold;
+      margin-bottom: 10px;
+    }
+    .switch {
+      position: relative;
+      display: inline-block;
+      width: 60px;
+      height: 34px;
+    }
+    .switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+    .slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: #ccc;
+      transition: .4s;
+      border-radius: 34px;
+    }
+    .slider:before {
+      position: absolute;
+      content: "";
+      height: 26px;
+      width: 26px;
+      left: 4px;
+      bottom: 4px;
+      background-color: white;
+      transition: .4s;
+      border-radius: 50%;
+    }
+    input:checked + .slider {
+      background-color: #2ecc71;
+    }
+    input:checked + .slider:before {
+      transform: translateX(26px);
+    }
+    button {
+      background-color: #e74c3c;
+      color: white;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 5px;
+      cursor: pointer;
+      margin-left: 10px;
+    }
+
+    :root {
+      --bg-color: #343a40;
+      --text-color: #ffffff;
+      --border-color: #495057;
+    }
+
+    .light-theme {
+      --bg-color: #f4f4f9;
+      --text-color: #333333;
+      --border-color: #e0e0e0;
+    }
+
+    body, .container, .content, .device-list, .switch-container {
+      background-color: var(--bg-color);
+    }
+		body, .container, .content, .device-list, .switch-container, header {
+      color: var(--text-color);
+      transition: background-color 0.5s ease, color 0.5s ease, border-color 0.5s ease;
+    }
+
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>路由器管理</h1>
+    </header>
+    <div class="content">
+      <div class="device-list">
+        <h2>设备列表</h2>
+        <div id="device-list"></div>
+      </div>
+      <div class="switch-container">
+        <h2>开关控制</h2>
+        <label class="switch-label">断网开关</label>
+        <label class="switch">
+          <input type="checkbox" id="arp-switch">
+          <span class="slider"></span>
+        </label>
+
+        <!-- 新增主题切换开关 -->
+        <div style="margin-top: 20px;">
+          <label class="switch-label">主题切换</label>
+          <label class="switch">
+            <input type="checkbox" id="theme-switch">
+            <span class="slider"></span>
+          </label>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // 获取设备列表
+    function fetchDevices() {
+      fetch('/devices')
+        .then(response => response.json())
+        .then(data => {
+          const deviceList = document.getElementById('device-list');
+          deviceList.innerHTML = '';
+          data.forEach(device => {
+            const deviceItem = document.createElement('div');
+            deviceItem.className = 'device-item';
+            deviceItem.innerHTML = `
+              <div class="device-info">
+                <span>${device.name}</span>
+                <span class="device-ip">${device.ip}</span>
+              </div>
+              <button onclick="toggleBlacklist('${device.mac}', '${device.ip}', ${device.blacklisted}, this)">
+                ${device.blacklisted ? '移出黑名单' : '加入黑名单'}
+              </button>
+            `;
+						if (device.blacklisted === false) {
+							deviceItem.querySelector("button").style.backgroundColor = "#e74c3c";
+						}
+						else {
+							deviceItem.querySelector("button").style.backgroundColor = "#2ecc71";
+						}
+            deviceList.appendChild(deviceItem);
+          });
+        })
+        .catch(error => console.error('Error fetching devices:', error));
+    }
+
+    // 切换开关状态
+    document.getElementById('arp-switch').addEventListener('change', function() {
+      const status = !this.checked;
+      fetch('/open', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+					status 
+				})
+      })
+      .then(response => {
+				response.json()
+			})
+      .then(data => {
+        console.log('Switch status updated:', data);
+      })
+      .catch(error => console.error('Error updating switch status:', error));
+    });
+
+    // 加入/移出黑名单
+    function toggleBlacklist(mac, ip, isBlacklisted, button) {
+      fetch('/blacklist', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          mac,
+          ip,
+          delete: isBlacklisted
+        })
+      })
+      .then(response => {
+				response.json()
+			})
+      .then(data => {
+        console.log('Blacklist updated:', data);
+        fetchDevices(); // 刷新设备列表
+      })
+      .catch(error => console.error('Error updating blacklist:', error));
+    }
+
+    // 主题切换逻辑
+    document.getElementById('theme-switch').addEventListener('change', function() {
+      const isLightTheme = this.checked;
+      document.body.classList.toggle('light-theme', isLightTheme);
+      localStorage.setItem('theme', isLightTheme ? 'light' : 'dark');
+    });
+
+    // 初始化主题
+    window.onload = function() {
+      // 检查本地存储中的主题设置
+      const savedTheme = localStorage.getItem('theme') || 'dark';
+      if (savedTheme === 'light') {
+        document.body.classList.add('light-theme');
+        document.getElementById('theme-switch').checked = true;
+      }
+
+      fetchDevices();
+      // 检查开关状态
+      fetch('/open')
+        .then(response => {
+          if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+          }
+          return response.json();
+        })
+        .then(data => {
+          document.getElementById('arp-switch').checked = data.switch === 'off';
+        })
+        .catch(error => {
+          console.error('Error fetching switch status:', error);
+          alert('无法获取开关状态，请稍后重试。');
+        });
+
+      // 添加定时器，每隔5秒刷新设备列表
+      setInterval(fetchDevices, 5000);
+    };
+  </script>
+</body>
+</html>
